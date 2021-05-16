@@ -18,8 +18,14 @@ the bootloader loads our kernel. Note: Stack grows down so bottom comes first.
 */
 .section .bss
 .align 4
+	page_table_4:
+		.skip 4096
+	page_table_3:
+		.skip 4096
+	page_table_2:
+		.skip 4096
 	stack_bottom:
-	.skip 4096 * 4
+		.skip 4096 * 4 
 	stack_top:
 
 /*
@@ -36,15 +42,24 @@ _start:
 	*/
 	mov stack_top, %esp
 
+	# call check_multiboot
 	call check_CPUID
 	call check_long_mode
- 
+
 	/*
 	Finally call our kernel
 	*/
 	call kernel_main
 	hlt
- 
+
+/*
+Check for multiboot support
+*/
+check_multiboot:
+    cmp eax, 0x36d76289
+    jne no_multiboot
+    ret
+
 /*
 CPUID allows us to see the details of our processor, including support for long mode. Before we
 can use that instruction, we need to confirm that processor allows using it. To do so, we check
@@ -58,7 +73,7 @@ check_CPUID:
 	xor eax, 1 << 21    # Flip bit number 21 on eax - this is the ID bit
 
 	push eax      		# Push eax back onto the stack
-    popfd				# Now pop it but back into the flags register
+	popfd				# Now pop it but back into the flags register
 
 	pushfd				# Save flag on stack again (this time with the modified bit)
 	pop eax				# Store modified flag into the register again
@@ -69,7 +84,7 @@ check_CPUID:
 	# Now compare the flags
 	xor eax, ecx
 	jz no_CPUID
-    ret
+	ret
 
 /*
 This checks for long mode by first checking for the processor's extended function support. If
@@ -79,23 +94,23 @@ support.
 check_long_mode:
 	# Checks for extended functions
 	mov eax, 0x80000000    # Set the A-register to 0x80000000
-    cpuid                  # CPU identification will save maximum input value for CPUID info
-    cmp eax, 0x80000001    # Check to see if it is greater than 0x80000000
-    jb no_long_mode        # There is no long mode if it is less than 0x80000000
+	cpuid                  # CPU identification will save maximum input value for CPUID info
+	cmp eax, 0x80000001    # Check to see if it is greater than 0x80000000
+	jb no_long_mode        # There is no long mode if it is less than 0x80000000
 
 	# Checks for long mode
 	mov eax, 0x80000001    # Set the A-register to 0x80000001.
-    cpuid                  # CPU identification.
-    test edx, 1 << 29      # Test if the LM-bit, which is bit 29, is set in the D-register.
-    jz no_long_mode        # They aren't, there is no long mode.
-
+	cpuid                  # CPU identification.
+	test edx, 1 << 29      # Test if the LM-bit, which is bit 29, is set in the D-register.
+	jz no_long_mode        # They aren't, there is no long mode.
+	ret
 
 /*
-This subroutine sets the error number to 2 and then calls the print error routine.
-An error of 2 means that we did not find long mode support.
+This subroutine sets the error number to 0 and then calls the print error routine.
+An error of 2 means that we did not find multiboot support.
 */
-no_long_mode:
-	mov al, 0x32
+no_multiboot:
+	mov al, 0x30
 	call print_error
 	ret
 
@@ -105,6 +120,15 @@ An error of 1 means that we could not find CPUID support.
 */
 no_CPUID:
 	mov al, 0x31
+	call print_error
+	ret
+
+/*
+This subroutine sets the error number to 2 and then calls the print error routine.
+An error of 2 means that we did not find long mode support.
+*/
+no_long_mode:
+	mov al, 0x32
 	call print_error
 	ret
 
